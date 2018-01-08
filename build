@@ -30,6 +30,8 @@ if  [[ ! -e '/usr/bin/php' ]]; then
     else
         apt-get -y install php5 php5-fpm
 fi
+
+#Enable php in nginx
 echo '# Default server configuration
 server {
 listen 81 default_server;
@@ -82,4 +84,40 @@ fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;
 #}
 }' > /etc/nginx/sites-enabled/default
 
+#Restart nginx with php
+`service nginx restart`
+
+#Move speedTest directory to nginx home directory
+mv ./speedTest /var/www/html
+
+#Set DNS
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
+#Open TCP-BBR
+bit=`uname -m`
+#下载并安装内核
+if [[ ${bit} == "x86_64" ]]; then
+    wget http://kernel.ubuntu.com/~kernel-ppa/mainline/v4.14/linux-image-4.14.0-041400-generic_4.14.0-041400.201711122031_amd64.deb
+    dpkg -i linux-image-4.14.0-041400-generic_4.14.0-041400.201711122031_amd64.deb
+else wget http://kernel.ubuntu.com/~kernel-ppa/mainline/v4.14/linux-image-4.14.0-041400-generic_4.14.0-041400.201711122031_i386.deb
+    dpkg -i linux-image-4.14.0-041400-generic_4.14.0-041400.201711122031_i386.deb
+fi
+#卸载其余内核
+deb_total=`dpkg -l | grep linux-image | awk '{print $2}' | grep -v "${latest_version}" | wc -l`
+for((integer = 1; integer <= ${deb_total}; integer++))
+do
+deb_del=`dpkg -l|grep linux-image | awk '{print $2}' | grep -v "${latest_version}" | head -${integer}`
+apt-get purge -y ${deb_del}
+done
+/usr/sbin/update-grub
+#开启BBR
+sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
+sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+echo "net.core.default_qdisc = fq" >> /etc/sysctl.conf
+echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf
+sysctl -p >/dev/null 2>&1
+
+#Reboot VPS
+reboot
 
